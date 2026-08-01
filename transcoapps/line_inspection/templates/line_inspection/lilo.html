@@ -1,0 +1,79 @@
+{% extends "line_inspection/base.html" %}
+{% block title %}LILO — Line Inspection{% endblock %}
+{% block extra_head %}
+<style>
+  .flag { background: #fff8f5; border: 1px solid var(--grid); border-radius: 8px; padding: 8px 12px; margin-bottom: 6px; display: flex; gap: 12px; align-items: center; }
+  .flag .hdr-spacer { flex: 1; }
+</style>
+{% endblock %}
+{% block content %}
+<h1>LILO — Loop-In / Loop-Out</h1>
+<p class="dim">Super-Admin only. Record a LILO of a line, then review how the surviving physical towers re-link (preserving their history) and which loop towers are new. Rare event; nothing here runs automatically.</p>
+
+{% if churn_flags %}
+<h2>Possible undeclared churn <span class="pill pill-bad">{{ churn_flags|length }}</span></h2>
+<div class="panel">
+  <p class="dim">Deactivated towers that still carry history but have a co-located active tower — likely a LILO/shift that wasn't reconciled. Start a LILO to preserve their history.</p>
+  {% for f in churn_flags %}
+  <div class="flag">
+    <span>Stranded <b>T-{{ f.stranded.tower_number }}</b> <span class="dim">({{ f.stranded.line_name }})</span>
+      ↔ active <b>T-{{ f.twin.tower_number }}</b> <span class="dim">({{ f.twin.line_name }})</span> · {{ f.distance_m }} m</span>
+    <span class="hdr-spacer"></span>
+    <a class="btn btn-sm" href="?old_line={{ f.stranded.line_id }}&amp;new_line={{ f.twin.line_id }}">Start LILO</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2>Record a LILO</h2>
+<div class="panel">
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="create_lilo">
+  <div class="field">
+    <label for="old-line">Old (pre-LILO) line</label>
+    <select name="old_line_id" id="old-line" required><option value="">— select —</option></select>
+  </div>
+  <div class="field">
+    <label for="new-lines">New line(s) it became <span class="dim">(Ctrl/Cmd-click for two)</span></label>
+    <select name="new_line_ids" id="new-lines" multiple size="6" required></select>
+  </div>
+  <div class="field"><label for="lilo-date">LILO date</label><input type="date" name="lilo_date" id="lilo-date"></div>
+  <div class="field"><label for="notes">Notes</label><input type="text" name="notes" id="notes" placeholder="e.g. new SS looped in near tower 50"></div>
+  <button class="btn btn-primary" type="submit">Record &amp; review reconcile</button>
+</form>
+</div>
+
+<h2>LILO events</h2>
+<div class="panel">
+<table>
+  <tr><th>#</th><th>Old line</th><th>New lines</th><th>Date</th><th>Status</th><th>By</th><th></th></tr>
+  {% for e in events %}
+  <tr>
+    <td>{{ e.id }}</td>
+    <td>{{ e.old_line.name }}</td>
+    <td>{% for l in e.new_lines.all %}{{ l.name }}{% if not forloop.last %}; {% endif %}{% endfor %}</td>
+    <td>{{ e.lilo_date|default:"—" }}</td>
+    <td>{% if e.applied_at %}<span class="pill pill-ok">Applied {{ e.applied_at|date:"Y-m-d" }}</span>{% else %}<span class="pill pill-bad">Draft</span>{% endif %}</td>
+    <td>{{ e.performed_by_employee_id }}</td>
+    <td><a class="btn btn-sm" href="{% url 'line_inspection:lilo-reconcile' e.id %}">{% if e.applied_at %}View{% else %}Reconcile{% endif %}</a></td>
+  </tr>
+  {% empty %}<tr><td colspan="7" class="dim">No LILO events recorded.</td></tr>{% endfor %}
+</table>
+</div>
+
+<script id="lines-payload" type="application/json">{{ lines_json|safe }}</script>
+<script>
+(function () {
+  var LINES = JSON.parse(document.getElementById('lines-payload').textContent || '[]');
+  var oldSel = document.getElementById('old-line');
+  var newSel = document.getElementById('new-lines');
+  var prefillOld = "{{ prefill_old }}", prefillNew = "{{ prefill_new }}";
+  LINES.forEach(function (l) {
+    var label = l.name + ' (' + (l.voltage || '') + ')';
+    var o1 = new Option(label, l.id); if (String(l.id) === prefillOld) o1.selected = true; oldSel.add(o1);
+    var o2 = new Option(label, l.id); if (String(l.id) === prefillNew) o2.selected = true; newSel.add(o2);
+  });
+})();
+</script>
+{% endblock %}

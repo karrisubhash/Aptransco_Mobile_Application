@@ -1,0 +1,78 @@
+{% extends "line_inspection/base.html" %}
+{% block title %}Checklist Catalog — Line Inspection{% endblock %}
+{% block content %}
+<h1>Checklist catalog <span class="dim">(version {{ catalog_version }})</span></h1>
+<p class="dim">Editable — this questionnaire is not finalised. Editing anything here bumps the catalog version so past inspections stay traceable to the shape they were recorded under.</p>
+
+<div class="panel">
+  <a class="btn btn-primary" href="{% url 'line_inspection:checklist-group-new' %}">+ Add group</a>
+  <a class="btn btn-primary" href="{% url 'line_inspection:checklist-item-new' %}">+ Add item</a>
+  <a class="btn btn-primary" href="{% url 'line_inspection:checklist-defect-new' %}">+ Add defect</a>
+  <a class="btn btn-primary" href="{% url 'line_inspection:checklist-followup-new' %}">+ Add follow-up question</a>
+  <a class="btn btn-primary" href="{% url 'line_inspection:checklist-rule-new' %}">+ Add criticality rule</a>
+</div>
+
+{% for group in groups %}
+<h2>{{ group.sort_order }}. {{ group.label }} <span class="dim">({{ group.key }})</span>
+  <a class="btn btn-sm" href="{% url 'line_inspection:checklist-group-edit' group.pk %}">edit</a>
+  <form class="inline" method="post" action="{% url 'line_inspection:checklist-delete' 'group' group.pk %}">{% csrf_token %}<button class="btn btn-sm btn-danger" onclick="return confirm('Delete group?')">delete</button></form>
+</h2>
+<div class="panel">
+<table>
+<tr><th>Sno</th><th>Item</th><th>Positions</th><th>Applies to</th><th>Availability?</th><th></th></tr>
+{% for item in group.items.all %}
+<tr>
+  <td>{{ item.sno }}</td>
+  <td>{{ item.label }} <span class="dim">({{ item.key }})</span></td>
+  <td>{{ item.positions|join:", "|default:"—" }}</td>
+  <td>{{ item.applicable_tower_types|join:", "|default:"all tower types" }}</td>
+  <td>{% if item.is_availability_gated %}item-level{% elif item.is_position_availability_gated %}per-position{% else %}—{% endif %}</td>
+  <td>
+    <a class="btn btn-sm" href="{% url 'line_inspection:checklist-item-edit' item.pk %}">edit</a>
+    <form class="inline" method="post" action="{% url 'line_inspection:checklist-delete' 'item' item.pk %}">{% csrf_token %}<button class="btn btn-sm btn-danger" onclick="return confirm('Delete item?')">delete</button></form>
+  </td>
+</tr>
+<tr><td colspan="6">
+  <table>
+  <tr><th>Defect</th><th>Ask</th><th>Default criticality</th><th>Rules</th><th></th></tr>
+  {% for defect in item.defects.all %}
+  <tr>
+    <td>{{ defect.label }} <span class="dim">({{ defect.key }})</span></td>
+    <td>{{ defect.ask|join:", "|default:"—" }}</td>
+    <td>{{ defect.get_default_criticality_display }}</td>
+    <td>
+      {% for rule in defect.criticality_rules.all %}
+        <div>{{ rule.follow_up_key }} {{ rule.get_operator_display }} {{ rule.threshold_value }} → {{ rule.get_resulting_criticality_display }}
+          <a class="btn btn-sm" href="{% url 'line_inspection:checklist-rule-edit' rule.pk %}">edit</a></div>
+      {% empty %}<span class="dim">none</span>{% endfor %}
+    </td>
+    <td>
+      <a class="btn btn-sm" href="{% url 'line_inspection:checklist-defect-edit' defect.pk %}">edit</a>
+      <form class="inline" method="post" action="{% url 'line_inspection:checklist-delete' 'defect' defect.pk %}">{% csrf_token %}<button class="btn btn-sm btn-danger" onclick="return confirm('Delete defect?')">delete</button></form>
+    </td>
+  </tr>
+  {% empty %}<tr><td colspan="5" class="dim">No defects yet.</td></tr>{% endfor %}
+  </table>
+</td></tr>
+{% empty %}<tr><td colspan="6" class="dim">No items in this group yet.</td></tr>{% endfor %}
+</table>
+</div>
+{% empty %}<p class="dim">No groups yet.</p>{% endfor %}
+
+<h2>Follow-up questions</h2>
+<div class="panel">
+<table>
+<tr><th>Key</th><th>Question</th><th>Type</th><th>Options / unit</th><th></th></tr>
+{% for q in follow_up_questions %}
+<tr>
+  <td>{{ q.key }}</td><td>{{ q.question_text }}</td><td>{{ q.get_answer_type_display }}</td>
+  <td>{{ q.options|join:", " }}{{ q.unit }}</td>
+  <td>
+    <a class="btn btn-sm" href="{% url 'line_inspection:checklist-followup-edit' q.pk %}">edit</a>
+    <form class="inline" method="post" action="{% url 'line_inspection:checklist-delete' 'followup' q.pk %}">{% csrf_token %}<button class="btn btn-sm btn-danger" onclick="return confirm('Delete?')">delete</button></form>
+  </td>
+</tr>
+{% empty %}<tr><td colspan="5" class="dim">None yet.</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}

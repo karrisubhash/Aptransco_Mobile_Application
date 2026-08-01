@@ -1,0 +1,33 @@
+# ---- Python / Django backend ----
+venv/
+.venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+*.log
+
+# Django local secrets / env files (db.sqlite3 and media/ are intentionally tracked)
+.env
+*.env
+local_settings.py
+
+# ---- Editors / IDE ----
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Claude ----
+.claude/settings.local.json

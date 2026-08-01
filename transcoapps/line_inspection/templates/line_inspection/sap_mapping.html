@@ -1,0 +1,58 @@
+{% extends "line_inspection/base.html" %}
+{% block title %}SAP ↔ ArcGIS Mapping — Line Inspection{% endblock %}
+{% block content %}
+<h1>SAP ↔ ArcGIS line mapping</h1>
+<p class="dim">{{ matched_count }} mapped, {{ unmatched_count }} unmapped. Auto-map writes only high-confidence matches — review the rest below.</p>
+
+<div class="panel">
+  <form class="inline" method="post"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"><input type="hidden" name="action" value="auto_map">
+    <button class="btn btn-primary" type="submit">Run auto-map</button>
+  </form>
+  <form method="get" class="inline">
+    <input type="text" name="q" value="{{ query }}" placeholder="Search ArcGIS line name…">
+    <button class="btn" type="submit">Search</button>
+  </form>
+</div>
+
+<div class="panel">
+<table>
+<tr><th>ArcGIS Line</th><th>Voltage</th><th>Mapped SAP Line</th><th>Suggestions (if unmapped)</th><th></th></tr>
+{% for row in rows %}
+<tr>
+  <td>{{ row.line.name }}</td>
+  <td>{{ row.line.voltage }}</td>
+  <td>
+    {% if row.line.sap_line %}
+      <span class="pill pill-ok">{{ row.line.sap_line.functional_location }}</span> {{ row.line.sap_line.description }}
+    {% else %}<span class="pill pill-bad">unmapped</span>{% endif %}
+  </td>
+  <td>
+    {% for sap_line, score, reason in row.suggestions %}
+      <div>{{ sap_line.functional_location }} — {{ sap_line.description }} <span class="dim">({{ reason }}, {{ score|floatformat:2 }})</span></div>
+    {% endfor %}
+  </td>
+  <td>
+    <form class="inline" method="post">{% csrf_token %}<input type="hidden" name="action" value="set_mapping"><input type="hidden" name="line_id" value="{{ row.line.id }}">
+      <select name="sap_line_id">
+        <option value="">— unmapped —</option>
+        {% for sl in all_sap_lines %}<option value="{{ sl.id }}" {% if row.line.sap_line_id == sl.id %}selected{% endif %}>{{ sl.functional_location }} — {{ sl.description }}</option>{% endfor %}
+      </select>
+      <button class="btn btn-sm" type="submit">Set</button>
+    </form>
+  </td>
+</tr>
+{% empty %}<tr><td colspan="5" class="dim">No lines found.</td></tr>{% endfor %}
+</table>
+<p class="dim">Showing up to 300 lines{% if query %} matching "{{ query }}"{% endif %}.</p>
+</div>
+
+<h2>Add a SAP line manually</h2>
+<div class="panel">
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="add_sap_line">
+  {{ sap_line_form.as_p }}
+  <button class="btn btn-primary" type="submit">Add</button>
+</form>
+</div>
+{% endblock %}

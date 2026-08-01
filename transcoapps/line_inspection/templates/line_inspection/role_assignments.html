@@ -1,0 +1,69 @@
+{% extends "line_inspection/base.html" %}
+{% block title %}Roles & Jurisdiction — Line Inspection{% endblock %}
+{% block content %}
+<h1>Roles &amp; Jurisdiction</h1>
+
+<h2>{% if candidate_source == 'hierarchy' %}Employees reporting to you{% else %}Search results{% endif %}</h2>
+<form method="get" class="panel">
+  <input type="text" name="q" value="{{ query }}" placeholder="Search all employees by name or id…">
+  <button class="btn" type="submit">Search</button>
+  {% if query %}<a class="btn" href="{% url 'line_inspection:role-assignments' %}">Show my hierarchy</a>{% endif %}
+</form>
+
+<div class="panel">
+<table>
+  <tr><th>Employee</th><th>Position</th><th>Cadre</th><th>Coverage</th><th></th></tr>
+  {% for row in candidate_rows %}
+  <tr>
+    <td>{{ row.employee.employee_name }} <span class="dim">({{ row.employee.employee_id }})</span></td>
+    <td>{{ row.employee.position_text }}</td>
+    <td>{{ row.employee.emp_sub_grp_desc }}</td>
+    <td>{{ row.coverage.assigned_lines }} / {{ row.coverage.total_lines_in_subdivisions }} lines across {{ row.coverage.subdivision_count }} subdivision(s)</td>
+    <td><a class="btn btn-primary" href="{% url 'line_inspection:role-assignment-new' row.employee.employee_id %}">Assign</a></td>
+  </tr>
+  {% empty %}<tr><td colspan="5" class="dim">Nobody found.</td></tr>{% endfor %}
+</table>
+</div>
+
+<h2>Active assignments</h2>
+<div class="panel">
+<table>
+  <tr><th>Employee</th><th>Subdivision</th><th>Specific lines</th><th>Assigned by</th><th>Assigned at</th><th></th></tr>
+  {% for a in assignments %}
+  <tr>
+    <td>{{ a.employee_id }}</td>
+    <td>{{ a.subdivision.name|default:"—" }}</td>
+    <td>{{ a.lines.count }} line(s)</td>
+    <td>{{ a.assigned_by_employee_id }}</td>
+    <td>{{ a.assigned_at|date:"Y-m-d H:i" }}</td>
+    <td>
+      <form class="inline" method="post"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"><input type="hidden" name="action" value="deactivate"><input type="hidden" name="assignment_id" value="{{ a.id }}">
+        <button class="btn btn-danger" type="submit" onclick="return confirm('Deactivate this assignment?')">Deactivate</button>
+      </form>
+    </td>
+  </tr>
+  {% empty %}<tr><td colspan="6" class="dim">No active assignments.</td></tr>{% endfor %}
+</table>
+</div>
+
+<h2>Active tower ranges</h2>
+<div class="panel">
+<table>
+  <tr><th>Employee</th><th>Line</th><th>From → To</th><th>Assigned by</th><th>Assigned at</th><th></th></tr>
+  {% for r in tower_ranges %}
+  <tr>
+    <td>{{ r.employee_id }}</td>
+    <td>{{ r.line.name }}</td>
+    <td>T-{{ r.from_tower.tower_number }} → T-{{ r.to_tower.tower_number }}</td>
+    <td>{{ r.assigned_by_employee_id }}</td>
+    <td>{{ r.assigned_at|date:"Y-m-d H:i" }}</td>
+    <td>
+      <form class="inline" method="post"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"><input type="hidden" name="action" value="deactivate_range"><input type="hidden" name="range_id" value="{{ r.id }}">
+        <button class="btn btn-danger" type="submit" onclick="return confirm('Deactivate this tower range?')">Deactivate</button>
+      </form>
+    </td>
+  </tr>
+  {% empty %}<tr><td colspan="6" class="dim">No active tower ranges.</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}

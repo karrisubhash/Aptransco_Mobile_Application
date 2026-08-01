@@ -1,0 +1,141 @@
+{% extends "line_inspection/base.html" %}
+{% block title %}Register — APTRANSCO Line Inspection{% endblock %}
+
+{% block extra_head %}
+<style>
+  .reg-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 12px; }
+  .reg-actions { margin-left: auto; display: flex; gap: 8px; }
+  .register-scroll { overflow-x: auto; border: 1px solid var(--grid); border-radius: 8px; }
+  table.register { border-collapse: collapse; font-size: 12px; min-width: 100%; }
+  table.register th, table.register td { border: 1px solid var(--grid); padding: 4px 7px; vertical-align: top; white-space: nowrap; }
+  table.register td.item-col, table.register th.item-col { white-space: normal; min-width: 210px; }
+  table.register .sticky { position: sticky; background: var(--surface); z-index: 2; }
+  table.register th.sticky { z-index: 3; }
+  table.register .sticky:first-child { left: 0; width: 42px; text-align: center; }
+  table.register .item-col.sticky { left: 42px; }
+  table.register thead th { background: var(--page); position: sticky; top: 0; }
+  .group-row td { background: #f1f0ea; font-weight: 700; }
+  .cell-ok { color: var(--good); text-align: center; font-weight: 700; }
+  .cell-na, .cell-np { color: var(--muted); text-align: center; }
+  .cell-defect { background: #fff8f5; white-space: normal; min-width: 160px; }
+  .crit-chip { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 999px; padding: 1px 6px; color: #fff; margin-right: 4px; }
+  .crit-minor { background: #fab219; } .crit-major { background: #ec835a; } .crit-critical { background: #d03b3b; }
+  .reg-title { margin: 8px 0; }
+  /* mobile one-tower view */
+  .register-mobile { display: none; }
+  @media (max-width: 820px) {
+    .register-scroll { display: none; }
+    .register-mobile { display: block; }
+  }
+  @media print {
+    header.topbar, nav.tabs, .reg-toolbar, .register-mobile { display: none !important; }
+    main { padding: 0; max-width: none; }
+    .register-scroll { overflow: visible; border: none; display: block; }
+    table.register .sticky { position: static; }
+    table.register { font-size: 10px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Line Inspection Register <span class="dim" style="font-size:13px;">digital replica of the field register</span></h1>
+
+<form method="get" class="reg-toolbar">
+  <label class="field" style="margin:0">Line
+    <select name="line" onchange="this.form.submit()">
+      <option value="">— select a line —</option>
+      {% for l in lines %}<option value="{{ l.id }}"{% if l.id == selected_line_id %} selected{% endif %}>{{ l.name }} ({{ l.voltage }})</option>{% endfor %}
+    </select>
+  </label>
+  <label class="field" style="margin:0">Cycle
+    <select name="cycle" onchange="this.form.submit()">
+      {% for val, label in cycle_labels.items %}<option value="{{ val }}"{% if val == cycle %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  {% if structure %}
+  <span class="reg-actions">
+    <button type="button" class="btn" onclick="window.print()">🖨 Print</button>
+    <a class="btn btn-primary" href="?line={{ selected_line_id }}&amp;cycle={{ cycle }}&amp;format=xlsx">⬇ Excel</a>
+  </span>
+  {% endif %}
+</form>
+
+{% if not selected_line %}
+  <div class="panel">Choose a line to view its inspection register. Only lines within your jurisdiction are listed.</div>
+{% elif not structure.tower_headers %}
+  <div class="panel">No towers are recorded on <b>{{ selected_line.name }}</b>.</div>
+{% else %}
+  <div class="reg-title"><b>Name of the line:</b> {{ selected_line.name }} · {{ selected_line.voltage }} · <span class="dim">{{ cycle_label }}</span></div>
+
+  <div class="register-scroll">
+    <table class="register">
+      <thead>
+        <tr>
+          <th class="sticky">S.No</th>
+          <th class="sticky item-col">Item</th>
+          {% for h in structure.tower_headers %}<th{% if not h.inspected %} class="dim"{% endif %}>T-{{ h.tower_number }}{% if h.is_virtual %} <span class="crit-chip" style="background:#6b7280">VT</span>{% endif %}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in structure.rows %}
+          {% if row.group_header %}
+          <tr class="group-row">
+            <td class="sticky"></td><td class="sticky item-col">{{ row.group_header }}</td>
+            {% for h in structure.tower_headers %}<td></td>{% endfor %}
+          </tr>
+          {% else %}
+          <tr>
+            <td class="sticky">{{ row.sno|default_if_none:'' }}</td>
+            <td class="sticky item-col">{{ row.label }}</td>
+            {% for cell in row.cells %}
+            <td class="cell-{{ cell.kind }}">
+              {% if cell.kind == 'defect' %}<span class="crit-chip crit-{{ cell.crit }}">{{ cell.crit|upper }}</span>{{ cell.text }}
+              {% elif cell.kind == 'ok' %}✓
+              {% else %}{{ cell.text }}{% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Mobile: one tower at a time -->
+  <div class="register-mobile">
+    <label class="field">Tower
+      <select id="mobileTower" onchange="renderMobileTower()">
+        {% for h in structure.tower_headers %}<option value="{{ forloop.counter0 }}">T-{{ h.tower_number }}{% if h.inspected %} ✓{% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    <table id="mobileRegister"></table>
+  </div>
+
+  <script>
+  (function () {
+    var table = document.querySelector('table.register');
+    window.renderMobileTower = function () {
+      if (!table) return;
+      var col = parseInt(document.getElementById('mobileTower').value, 10);
+      var out = document.getElementById('mobileRegister');
+      out.innerHTML = '';
+      table.querySelectorAll('tbody tr').forEach(function (tr) {
+        if (tr.classList.contains('group-row')) {
+          var gr = tr.querySelector('.item-col').textContent.trim();
+          if (gr) out.insertAdjacentHTML('beforeend', '<tr class="group-row"><td colspan="2">' + gr + '</td></tr>');
+          return;
+        }
+        var tds = tr.children;               // 0=S.No, 1=Item, 2..=towers
+        var label = tds[1].textContent.trim();
+        var cell = tds[2 + col];
+        if (!cell) return;
+        out.insertAdjacentHTML('beforeend',
+          '<tr><td class="item-col">' + label + '</td><td class="cell-' +
+          (cell.className.replace('cell-', '')) + '">' + cell.innerHTML + '</td></tr>');
+      });
+    };
+    renderMobileTower();
+  })();
+  </script>
+{% endif %}
+{% endblock %}

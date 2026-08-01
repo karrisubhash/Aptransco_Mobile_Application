@@ -1,0 +1,50 @@
+{
+  // This repo is Django (Python) + Flutter (Dart). No Java/Gradle project is
+  // authored here, and the Java extensions must not try to import one.
+  //
+  // Left enabled, they walk the Gradle subproject paths in
+  // drone_inspection_app/android/settings.gradle.kts -- which point into the
+  // pub cache -- and open each plugin's android/ folder as a STANDALONE Gradle
+  // build. Those folders ship their own settings.gradle, so the plugin becomes
+  // a Gradle *root* project, and Android Gradle Plugin 9 refuses to be applied
+  // in a root build file. That is the source of:
+  //   "A problem occurred configuring root project 'geolocator'."
+  // The real `flutter build` is unaffected: there the plugin is a subproject
+  // (:geolocator_android) and the Flutter Gradle plugin supplies
+  // flutter.compileSdkVersion.
+  "java.import.gradle.enabled": false,
+  "java.import.maven.enabled": false,
+  "java.autobuild.enabled": false,
+  "java.project.importOnFirstTimeStartup": "disabled",
+  "java.project.importHint": false,
+  "java.import.exclusions": [
+    "**/node_modules/**",
+    "**/.metadata/**",
+    "**/archetype-resources/**",
+    "**/META-INF/maven/**",
+    "**/android/**",
+    "**/ios/**",
+    "**/build/**",
+    "**/.dart_tool/**"
+  ],
+
+  // vscjava.vscode-gradle: stop task/project auto-discovery and the Gradle
+  // build server, which is the other path to the same spurious sync.
+  "gradle.autoDetect": "off",
+  "gradle.nestedProjects": false,
+  "java.gradle.buildServer.enabled": "off",
+
+  // Keep generated Flutter/Gradle output out of search and the file watcher.
+  "files.watcherExclude": {
+    "**/build/**": true,
+    "**/.dart_tool/**": true,
+    "**/.gradle/**": true,
+    "**/.venv/**": true
+  },
+  "search.exclude": {
+    "**/build/**": true,
+    "**/.dart_tool/**": true,
+    "**/.gradle/**": true,
+    "**/.venv/**": true
+  }
+}

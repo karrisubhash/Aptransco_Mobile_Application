@@ -1,0 +1,12 @@
+# Backend dependencies for the transcoapps Django project.
+# Install into the project virtualenv:
+#     .venv\Scripts\python.exe -m pip install -r requirements.txt
+
+Django>=6.0,<6.1              # settings.py / manage.py target Django 6.0
+djangorestframework>=3.16     # 'rest_framework' in INSTALLED_APPS, line_inspection/api
+psycopg[binary]>=3.2          # DATABASES ENGINE = django.db.backends.postgresql
+Pillow>=11.0                  # models.ImageField (item/defect photos)
+requests>=2.32                # services/: keycloak, sap, arcgis, checkcred clients
+openpyxl>=3.1                 # register.py + exports.py .xlsx writers
+reportlab>=4.2                # exports.py .pdf writer (History / Tickets reports)
+pandas>=2.2                   # management/commands/import_sap_lines.py

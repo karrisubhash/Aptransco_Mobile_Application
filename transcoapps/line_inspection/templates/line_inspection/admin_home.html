@@ -1,0 +1,37 @@
+{% extends "line_inspection/base.html" %}
+{% block title %}Home — Line Inspection{% endblock %}
+{% block content %}
+<h1>Home</h1>
+
+{% if is_super_admin and churn_count %}
+<div class="panel" style="border-color: var(--crit);">
+  <span class="pill pill-bad">{{ churn_count }}</span>
+  possible undeclared LILO/shift(s) — deactivated towers with history that have a co-located active tower.
+  <a class="btn btn-sm" href="{% url 'line_inspection:lilo-home' %}">Review LILO</a>
+</div>
+{% endif %}
+
+<div class="panel">
+  <b>Your dashboard</b>
+  <p class="dim" style="margin:4px 0 10px">View your towers on the map, track defect tickets, and browse inspection history. Inspections are captured in the field mobile app.</p>
+  <a class="btn btn-primary" href="{% url 'line_inspection:dashboard-map' %}">Open my map</a>
+  <a class="btn" href="{% url 'line_inspection:dashboard-tickets' %}">Tickets</a>
+  <a class="btn" href="{% url 'line_inspection:dashboard-inspections' %}">Inspections</a>
+  {% if is_management or is_admin %}<a class="btn" href="{% url 'line_inspection:dashboard-rollup' %}">Reports</a>{% endif %}
+</div>
+
+{% if is_admin or is_super_admin %}
+<h2>Admin overview</h2>
+<div class="panel">
+  <table>
+    <tr><th>Active towers</th><td>{{ towers }}</td></tr>
+    <tr><th>Active lines</th><td>{{ lines }}</td></tr>
+    <tr><th>Active role assignments</th><td>{{ active_assignments }}</td></tr>
+    <tr><th>Lines unmapped to SAP</th><td>{{ unmapped_lines }}</td></tr>
+    <tr><th>Checklist catalog version</th><td>{{ catalog_version }}</td></tr>
+  </table>
+</div>
+{% else %}
+<p class="dim">You're logged in as a field user. Contact a Super Admin if you should be assigning inspection roles.</p>
+{% endif %}
+{% endblock %}

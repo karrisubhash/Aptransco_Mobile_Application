@@ -1,0 +1,105 @@
+{% extends "line_inspection/base.html" %}
+{% block title %}Manage Admins — Line Inspection{% endblock %}
+{% block content %}
+<h1>Manage Admins</h1>
+<p class="dim">Candidates are surfaced automatically: DE/EE cadre employees whose position mentions "O&amp;M". Grant Admin rights to the position (not the individual) — whoever holds that position later inherits it.</p>
+
+<h2>Candidate positions (DE/EE cadre, O&amp;M)</h2>
+<div class="panel">
+<table>
+  <tr><th>Position ID</th><th>Position</th><th>Sample employee</th><th>Status</th><th></th></tr>
+  {% for c in candidates %}
+  <tr>
+    <td>{{ c.position_id }}</td>
+    <td>{{ c.position_text }}</td>
+    <td>{{ c.sample_employee }}</td>
+    <td>{% if c.granted %}<span class="pill pill-ok">Admin</span>{% else %}<span class="dim">—</span>{% endif %}</td>
+    <td>
+      {% if c.granted %}
+      <form class="inline" method="post"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="position_id" value="{{ c.position_id }}">
+        <button class="btn btn-danger" type="submit" onclick="return confirm('Revoke Admin rights for this position?')">Revoke</button>
+      </form>
+      {% else %}
+      <form class="inline" method="post"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"><input type="hidden" name="action" value="grant"><input type="hidden" name="position_id" value="{{ c.position_id }}"><input type="hidden" name="position_text" value="{{ c.position_text }}">
+        <button class="btn btn-primary" type="submit">Grant Admin</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="5" class="dim">No candidates found.</td></tr>
+  {% endfor %}
+</table>
+</div>
+
+<h2>Currently granted Admins</h2>
+<div class="panel">
+<table>
+  <tr><th>Position ID</th><th>Position</th><th>Notes</th><th></th></tr>
+  {% for g in granted %}
+  <tr>
+    <td>{{ g.position_id }}</td><td>{{ g.position_text }}</td><td>{{ g.notes }}</td>
+    <td>
+      <form class="inline" method="post"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="position_id" value="{{ g.position_id }}">
+        <button class="btn btn-danger" type="submit" onclick="return confirm('Revoke?')">Revoke</button>
+      </form>
+    </td>
+  </tr>
+  {% empty %}<tr><td colspan="4" class="dim">None granted yet.</td></tr>{% endfor %}
+</table>
+</div>
+
+<h2>Add by position id (fallback, if the filter above missed someone)</h2>
+<div class="panel">
+<form method="post" id="manual-add-form">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="add_manual">
+  {{ manual_form.as_p }}
+  <p id="position-lookup-status" class="dim"></p>
+  <button class="btn btn-primary" type="submit">Add</button>
+</form>
+</div>
+
+<script>
+(function () {
+  var posIdInput = document.getElementById('id_position_id');
+  var posTextInput = document.getElementById('id_position_text');
+  var status = document.getElementById('position-lookup-status');
+  if (!posIdInput || !posTextInput) return;
+
+  var lookupUrl = '{% url "line_inspection:lookup-position" position_id="__ID__" %}';
+  var currentRequestId = 0;
+
+  function lookup() {
+    var positionId = posIdInput.value.trim();
+    posTextInput.value = '';
+    if (!positionId) { status.textContent = ''; return; }
+
+    var requestId = ++currentRequestId;
+    status.textContent = 'Looking up position ' + positionId + '…';
+    fetch(lookupUrl.replace('__ID__', encodeURIComponent(positionId)))
+      .then(function (resp) { return resp.json().then(function (data) { return { ok: resp.ok, data: data }; }); })
+      .then(function (result) {
+        if (requestId !== currentRequestId) return; // a newer lookup superseded this one
+        if (!result.ok) {
+          status.textContent = result.data.error || 'Position id not found.';
+          return;
+        }
+        posTextInput.value = result.data.position_text;
+        status.textContent = result.data.employee_name
+          ? 'Current holder: ' + result.data.employee_name + ' (' + result.data.employee_id + ')'
+          : 'Position found (currently vacant).';
+      })
+      .catch(function () {
+        if (requestId !== currentRequestId) return;
+        status.textContent = 'Could not reach the SAP lookup service.';
+      });
+  }
+
+  posIdInput.addEventListener('blur', lookup);
+  posIdInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); lookup(); }
+  });
+})();
+</script>
+{% endblock %}

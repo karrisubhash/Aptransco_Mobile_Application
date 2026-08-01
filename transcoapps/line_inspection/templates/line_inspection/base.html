@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}APTRANSCO Line Inspection — Admin{% endblock %}</title>
+<style>
+  :root {
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e;
+    --muted: #898781; --grid: #e1e0d9; --blue: #2a78d6; --blue-100: #cde2fb;
+    --blue-600: #184f95; --crit: #d03b3b; --good: #0ca30c;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--page); color: var(--ink); margin: 0; font-size: 14px; }
+  header.topbar { display: flex; align-items: center; gap: 14px; background: var(--surface); border-bottom: 1px solid var(--grid); padding: 10px 20px; }
+  .brand { font-weight: 700; }
+  .brand small { display: block; font-weight: 400; font-size: 11px; color: var(--muted); }
+  .hdr-spacer { flex: 1; }
+  nav.tabs { display: flex; gap: 2px; background: var(--surface); border-bottom: 1px solid var(--grid); padding: 0 20px; flex-wrap: wrap; }
+  nav.tabs a { padding: 10px 14px; font-size: 13px; color: var(--ink-2); text-decoration: none; border-bottom: 2px solid transparent; }
+  nav.tabs a.active, nav.tabs a:hover { color: var(--blue-600); border-bottom-color: var(--blue); }
+  main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 18px; margin: 0 0 14px; }
+  h2 { font-size: 15px; margin: 22px 0 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; background: var(--surface); }
+  th, td { border: 1px solid var(--grid); padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--page); font-weight: 600; }
+  .btn { display: inline-block; background: var(--surface); border: 1px solid var(--muted); border-radius: 6px; padding: 5px 12px; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; text-decoration: none; }
+  .btn:hover { border-color: var(--ink-2); }
+  .btn-primary { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+  .btn-primary:hover { background: var(--blue-600); }
+  .btn-danger { color: var(--crit); border-color: var(--crit); }
+  .panel { background: var(--surface); border: 1px solid var(--grid); border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+  form.inline { display: inline; }
+  .field { margin: 10px 0; }
+  .field label { display: block; font-size: 12px; color: var(--ink-2); margin-bottom: 3px; }
+  input, select, textarea { padding: 6px 9px; border: 1px solid var(--muted); border-radius: 6px; font: inherit; font-size: 13px; }
+  .messages { list-style: none; padding: 0; margin: 0 0 14px; }
+  .messages li { background: var(--blue-100); color: var(--blue-600); padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 9px; }
+  .pill-ok { background: #e7f6e7; color: #063; }
+  .pill-bad { background: #fdeeee; color: var(--crit); }
+  .dim { color: var(--muted); }
+</style>
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">APTRANSCO · Line Inspection <small>Admin panel</small></div>
+  <div class="hdr-spacer"></div>
+  {% if session_employee_id %}
+    <span class="dim">{{ session_display_name }} ({{ session_employee_id }})</span>
+    <a class="btn btn-sm" href="{% url 'line_inspection:logout' %}">Logout</a>
+  {% endif %}
+</header>
+{% if session_employee_id %}
+<nav class="tabs">
+  <a href="{% url 'line_inspection:admin-home' %}">Home</a>
+  <a href="{% url 'line_inspection:dashboard-map' %}"{% if active_tab == 'map' %} class="active"{% endif %}>Map</a>
+  <a href="{% url 'line_inspection:dashboard-tickets' %}"{% if active_tab == 'tickets' %} class="active"{% endif %}>Tickets</a>
+  <a href="{% url 'line_inspection:dashboard-inspections' %}"{% if active_tab == 'inspections' %} class="active"{% endif %}>Inspections</a>
+  <a href="{% url 'line_inspection:dashboard-register' %}"{% if active_tab == 'register' %} class="active"{% endif %}>Register</a>
+  {% if is_management or is_admin %}<a href="{% url 'line_inspection:dashboard-rollup' %}"{% if active_tab == 'rollup' %} class="active"{% endif %}>Reports</a>{% endif %}
+  {% if is_admin %}
+  <a href="{% url 'line_inspection:role-assignments' %}">Roles &amp; Jurisdiction</a>
+  <a href="{% url 'line_inspection:checklist-editor' %}">Checklist Catalog</a>
+  <a href="{% url 'line_inspection:sap-mapping' %}">SAP ↔ ArcGIS Mapping</a>
+  {% endif %}
+  {% if is_super_admin %}<a href="{% url 'line_inspection:manage-admins' %}">Manage Admins</a>{% endif %}
+  {% if is_super_admin %}<a href="{% url 'line_inspection:lilo-home' %}">LILO</a>{% endif %}
+</nav>
+{% endif %}
+<main>
+  {% if messages %}
+  <ul class="messages">
+    {% for message in messages %}<li>{{ message }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

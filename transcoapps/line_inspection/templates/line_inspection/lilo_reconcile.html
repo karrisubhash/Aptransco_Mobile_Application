@@ -1,0 +1,79 @@
+{% extends "line_inspection/base.html" %}
+{% block title %}LILO reconcile #{{ event.id }} — Line Inspection{% endblock %}
+{% block extra_head %}
+<style>
+  .m-auto { color: var(--good); font-weight: 600; }
+  .m-review { color: #b8860b; font-weight: 600; }
+  .m-new { color: var(--blue-600); font-weight: 600; }
+  td select { max-width: 320px; }
+</style>
+{% endblock %}
+{% block content %}
+<h1>LILO reconcile <span class="dim" style="font-size:13px;">#{{ event.id }} · {{ event.old_line.name }}</span></h1>
+<p class="dim">
+  New line(s): {% for l in event.new_lines.all %}<b>{{ l.name }}</b>{% if not forloop.last %}, {% endif %}{% endfor %}.
+  Each NEW tower is matched to a surviving OLD tower (its history is preserved) or marked new.
+  <b class="m-auto">auto</b> = high-confidence; <b class="m-review">review</b> = confirm/override;
+  <b class="m-new">new</b> = genuine loop tower.
+</p>
+
+{% if event.applied_at %}
+<div class="panel"><b>Applied {{ event.applied_at|date:"Y-m-d H:i" }}.</b> This reconcile is read-only now.</div>
+{% endif %}
+
+<div class="panel">
+  Proposal: <b class="m-auto">{{ proposal.counts.auto }}</b> auto ·
+  <b class="m-review">{{ proposal.counts.review }}</b> review ·
+  <b class="m-new">{{ proposal.counts.new }}</b> new ·
+  {{ proposal.counts.unmatched_old }} old tower(s) with no proposal.
+</div>
+
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="apply">
+  <table>
+    <thead><tr><th>New tower</th><th>Type</th><th></th><th>Decision (surviving OLD tower or NEW)</th></tr></thead>
+    <tbody>
+      {% for p in proposal.pairs %}
+      <tr>
+        <td><b>T-{{ p.new_tower.tower_number }}</b></td>
+        <td>{{ p.new_tower.tower_type }}</td>
+        <td class="m-{{ p.method }}">{{ p.method }}{% if p.distance_m is not None %} <span class="dim">{{ p.distance_m }}m{% if p.number_match %}, #match{% endif %}</span>{% endif %}</td>
+        <td>
+          {% if event.applied_at %}
+            {% if p.old_tower %}→ T-{{ p.old_tower.tower_number }}{% else %}new{% endif %}
+          {% else %}
+          <select name="decision_{{ p.new_tower.id }}">
+            {% if p.method == 'auto' %}
+              <option value="match:{{ p.old_tower.id }}" selected>Re-link to OLD T-{{ p.old_tower.tower_number }} ({{ p.distance_m }}m)</option>
+              <option value="new">Mark as NEW tower</option>
+            {% elif p.method == 'new' %}
+              <option value="new" selected>NEW tower (no match)</option>
+            {% else %}
+              {% for c in p.candidates %}
+              <option value="match:{{ c.old_tower.id }}"{% if forloop.first %} selected{% endif %}>Re-link to OLD T-{{ c.old_tower.tower_number }} ({{ c.distance_m }}m{% if c.number_match %}, #match{% endif %})</option>
+              {% endfor %}
+              <option value="new">Mark as NEW tower</option>
+            {% endif %}
+          </select>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="dim">No new towers on the new line(s) — nothing to reconcile (records lineage only).</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if proposal.unmatched_old %}
+  <h2>Old towers with no proposal</h2>
+  <p class="dim">These pre-LILO towers weren't matched to any new tower (removed or heavily renumbered). They stay deactivated; their history is retained. Review manually if needed.</p>
+  <div class="panel">{% for o in proposal.unmatched_old %}T-{{ o.tower_number }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>
+  {% endif %}
+
+  {% if not event.applied_at %}
+  <p><button class="btn btn-primary" type="submit" onclick="return confirm('Apply this reconcile? Matched towers keep their identity + history; the rest become new.')">Apply reconcile</button>
+  <a class="btn" href="{% url 'line_inspection:lilo-home' %}">Cancel</a></p>
+  {% endif %}
+</form>
+{% endblock %}

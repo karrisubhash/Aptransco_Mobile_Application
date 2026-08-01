@@ -1,0 +1,97 @@
+{% extends "line_inspection/base.html" %}
+{% block title %}Tickets — APTRANSCO Line Inspection{% endblock %}
+
+{% block extra_head %}
+<style>
+  .filter-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 14px; }
+  .crit-critical { color: var(--crit); font-weight: 700; }
+  .crit-major { color: #ec835a; font-weight: 600; }
+  .crit-minor { color: #b8860b; }
+  .src-drone { background: #eef; color: #338; }
+  .src-human_inspection { background: #efe; color: #363; }
+  .src { display: inline-block; font-size: 11px; border-radius: 999px; padding: 1px 8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Defect Tickets</h1>
+
+<form class="filter-bar" method="get">
+  <label class="field" style="margin:0">Status
+    <select name="status" onchange="this.form.submit()">
+      <option value="">All</option>
+      <option value="open" {% if status_f == 'open' %}selected{% endif %}>Open</option>
+      <option value="closed" {% if status_f == 'closed' %}selected{% endif %}>Closed</option>
+    </select>
+  </label>
+  <label class="field" style="margin:0">Source
+    <select name="source" onchange="this.form.submit()">
+      <option value="">All</option>
+      <option value="human_inspection" {% if source_f == 'human_inspection' %}selected{% endif %}>Human</option>
+      <option value="drone_inspection" {% if source_f == 'drone_inspection' %}selected{% endif %}>Drone</option>
+    </select>
+  </label>
+  <label class="field" style="margin:0">Criticality
+    <select name="criticality" onchange="this.form.submit()">
+      <option value="">All</option>
+      <option value="critical" {% if crit_f == 'critical' %}selected{% endif %}>Critical</option>
+      <option value="major" {% if crit_f == 'major' %}selected{% endif %}>Major</option>
+      <option value="minor" {% if crit_f == 'minor' %}selected{% endif %}>Minor</option>
+    </select>
+  </label>
+</form>
+
+<table>
+  <thead>
+    <tr>
+      <th>Raised</th><th>Tower</th><th>Line</th><th>Item / Defect</th>
+      <th>Criticality</th><th>Source</th><th>Status</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in tickets %}
+    <tr data-ticket="{{ t.id }}">
+      <td>{{ t.raised_at|date:"Y-m-d H:i" }}</td>
+      <td>{{ t.tower.tower_number }}</td>
+      <td>{{ t.tower.line_name }}</td>
+      <td>{{ t.item_label }}{% if t.position %} ({{ t.position }}){% endif %}<br><span class="dim">{{ t.defect_label }}</span></td>
+      <td class="crit-{{ t.criticality }}">{{ t.get_criticality_display }}</td>
+      <td><span class="src src-{{ t.source }}">{{ t.get_source_display }}</span></td>
+      <td class="ticket-status">{% if t.status == 'open' %}<span class="pill pill-bad">Open</span>{% else %}<span class="pill pill-ok">Closed</span>{% endif %}</td>
+      <td>{% if t.status == 'open' %}<button class="btn btn-sm close-btn" data-ticket="{{ t.id }}">Close</button>{% else %}<span class="dim">{{ t.closed_by_employee_id }}</span>{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="8" class="dim">No tickets match these filters within your scope.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<script>
+(function () {
+  var CLOSE_URL = "{% url 'line_inspection:api-ticket-close' 0 %}";  // trailing /0/ replaced per ticket
+  document.querySelectorAll('.close-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.dataset.ticket;
+      var note = prompt('Closing note (optional):', 'Attended and rectified');
+      if (note === null) return;
+      btn.disabled = true;
+      fetch(CLOSE_URL.replace('/0/', '/' + id + '/'), {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ close_note: note })
+      }).then(function (r) {
+        if (!r.ok) throw new Error('close failed');
+        return r.json();
+      }).then(function () {
+        var row = document.querySelector('tr[data-ticket="' + id + '"]');
+        row.querySelector('.ticket-status').innerHTML = '<span class="pill pill-ok">Closed</span>';
+        btn.remove();
+      }).catch(function () {
+        btn.disabled = false;
+        alert('Could not close this ticket — you may not have permission.');
+      });
+    });
+  });
+})();
+</script>
+{% endblock %}

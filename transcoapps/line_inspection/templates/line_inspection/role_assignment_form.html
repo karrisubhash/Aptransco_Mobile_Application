@@ -1,0 +1,301 @@
+{% extends "line_inspection/base.html" %}
+{% block title %}Assign {{ employee.employee_name }} — Line Inspection{% endblock %}
+{% block extra_head %}
+<style>
+  .combo { position: relative; max-width: 520px; }
+  .combo-panel {
+    position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin-top: 2px;
+    background: var(--surface); border: 1px solid var(--grid); border-radius: 6px;
+    max-height: 260px; overflow-y: auto; box-shadow: 0 6px 16px rgba(0,0,0,.10); display: none;
+  }
+  .combo.open .combo-panel { display: block; }
+  .combo-panel .opt { padding: 6px 10px; cursor: pointer; font-size: 13px; display: flex; justify-content: space-between; gap: 10px; }
+  .combo-panel .opt:hover, .combo-panel .opt.hl { background: var(--blue-100); }
+  .combo-panel .opt.is-selected { font-weight: 600; color: var(--blue-600); }
+  .combo-panel .opt .sub { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .combo-panel .empty { padding: 8px 10px; color: var(--muted); font-size: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .chip { background: var(--blue-100); color: var(--blue-600); border-radius: 999px; padding: 3px 6px 3px 10px; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+  .chip button { border: none; background: none; cursor: pointer; color: inherit; font-weight: 700; font-size: 13px; line-height: 1; padding: 0 2px; }
+  .real-select-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+  .field-hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .field-hint a { color: var(--blue); }
+</style>
+{% endblock %}
+{% block content %}
+<h1>Assign jurisdiction to {{ employee.employee_name }} ({{ employee.employee_id }})</h1>
+<p class="dim">{{ employee.position_text }}</p>
+<div class="panel">
+<form method="post" action="{% url 'line_inspection:role-assignments' %}" id="assignment-form">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="create">
+  {{ form.employee_id }}
+
+  <div class="field">
+    <label for="subdivision-search">Subdivision <span class="dim">(optional — grants every line in it)</span></label>
+    <div class="combo" id="subdivision-combo">
+      <input type="text" class="combo-search" id="subdivision-search" placeholder="Search subdivision…" autocomplete="off">
+      <div class="combo-panel" id="subdivision-panel"></div>
+    </div>
+    <div class="real-select-hidden">{{ form.subdivision }}</div>
+    <div class="field-hint">Picking one also narrows the line search below to that subdivision by default.</div>
+  </div>
+
+  <div class="field">
+    <label for="lines-search">Specific lines <span class="dim">(optional — grants just these, in addition to any subdivision above)</span></label>
+    <div class="chips" id="lines-chips"></div>
+    <div class="combo" id="lines-combo">
+      <input type="text" class="combo-search" id="lines-search" placeholder="Search lines by name…" autocomplete="off">
+      <div class="combo-panel" id="lines-panel"></div>
+    </div>
+    <div class="real-select-hidden">{{ form.lines }}</div>
+    <div class="field-hint">
+      <span id="lines-count">0</span> line(s) selected · showing lines from <span id="lines-filter-label">all subdivisions</span>
+      <a href="#" id="lines-show-all" style="display:none">— show all subdivisions instead</a>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" type="submit">Save assignment</button>
+  <a class="btn" href="{% url 'line_inspection:role-assignments' %}">Cancel</a>
+</form>
+</div>
+
+<h2>Or assign a tower range on one line</h2>
+<p class="dim">Use this when a line is shared — pick a line, then the From and To tower. The user gets only the towers in that stretch (inclusive).</p>
+<div class="panel">
+<form method="post" action="{% url 'line_inspection:role-assignments' %}">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="create_range">
+  <input type="hidden" name="employee_id" value="{{ employee.employee_id }}">
+  <div class="field">
+    <label for="range-line">Line</label>
+    <select name="range_line_id" id="range-line" required>
+      <option value="">— select a line —</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="from-tower">From tower</label>
+    <select name="from_tower_id" id="from-tower" required disabled><option value="">— select a line first —</option></select>
+  </div>
+  <div class="field">
+    <label for="to-tower">To tower</label>
+    <select name="to_tower_id" id="to-tower" required disabled><option value="">— select a line first —</option></select>
+  </div>
+  <button class="btn btn-primary" type="submit">Assign tower range</button>
+</form>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var LINES = JSON.parse(document.getElementById('lines-payload').textContent || '[]');
+  var SCHEDULE_URL = "{% url 'line_inspection:line-schedule-json' 0 %}";
+  var lineSel = document.getElementById('range-line');
+  var fromSel = document.getElementById('from-tower');
+  var toSel = document.getElementById('to-tower');
+
+  LINES.forEach(function (l) {
+    var o = document.createElement('option');
+    o.value = l.id; o.textContent = l.name + ' (' + (l.voltage || '') + ')';
+    lineSel.appendChild(o);
+  });
+
+  function setTowerOptions(sel, towers, placeholder) {
+    sel.innerHTML = '';
+    var ph = document.createElement('option'); ph.value = ''; ph.textContent = placeholder;
+    sel.appendChild(ph);
+    towers.forEach(function (t) {
+      var o = document.createElement('option');
+      o.value = t.id;
+      o.textContent = 'T-' + t.tower_number + (t.cp_sp ? ' (' + t.cp_sp + ')' : '');
+      sel.appendChild(o);
+    });
+    sel.disabled = towers.length === 0;
+  }
+
+  lineSel.addEventListener('change', function () {
+    var id = lineSel.value;
+    fromSel.disabled = toSel.disabled = true;
+    if (!id) return;
+    fromSel.innerHTML = toSel.innerHTML = '<option value="">loading…</option>';
+    fetch(SCHEDULE_URL.replace('/0/', '/' + id + '/'), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var towers = d.towers || [];
+        setTowerOptions(fromSel, towers, towers.length ? '— from tower —' : 'No scheduled towers');
+        setTowerOptions(toSel, towers, towers.length ? '— to tower —' : 'No scheduled towers');
+      })
+      .catch(function () { setTowerOptions(fromSel, [], 'Failed to load'); setTowerOptions(toSel, [], 'Failed to load'); });
+  });
+});
+</script>
+
+<script id="lines-payload" type="application/json">{{ lines_json|safe }}</script>
+<script>
+(function () {
+  var LINES = JSON.parse(document.getElementById('lines-payload').textContent || '[]');
+
+  var subSelect = document.getElementById('id_subdivision');
+  var linesSelect = document.getElementById('id_lines');
+
+  var subCombo = document.getElementById('subdivision-combo');
+  var subSearch = document.getElementById('subdivision-search');
+  var subPanel = document.getElementById('subdivision-panel');
+
+  var linesCombo = document.getElementById('lines-combo');
+  var linesSearch = document.getElementById('lines-search');
+  var linesPanel = document.getElementById('lines-panel');
+  var linesChips = document.getElementById('lines-chips');
+  var linesCount = document.getElementById('lines-count');
+  var linesFilterLabel = document.getElementById('lines-filter-label');
+  var linesShowAll = document.getElementById('lines-show-all');
+
+  var subdivisionOptions = Array.prototype.slice.call(subSelect.options)
+    .filter(function (o) { return o.value !== ''; })
+    .map(function (o) { return { id: o.value, name: o.textContent }; });
+
+  var subdivisionFilterId = null; // null = show lines from every subdivision
+
+  document.addEventListener('click', function (e) {
+    if (!subCombo.contains(e.target)) subCombo.classList.remove('open');
+    if (!linesCombo.contains(e.target)) linesCombo.classList.remove('open');
+  });
+
+  // ---- Subdivision combo (single-select) ----
+  function renderSubdivisionPanel(filterText) {
+    var q = (filterText || '').trim().toLowerCase();
+    var matches = subdivisionOptions.filter(function (o) { return o.name.toLowerCase().indexOf(q) !== -1; });
+    subPanel.innerHTML = '';
+    var clearRow = document.createElement('div');
+    clearRow.className = 'opt' + (subSelect.value === '' ? ' is-selected' : '');
+    clearRow.textContent = '— No subdivision —';
+    clearRow.addEventListener('click', function () { selectSubdivision('', ''); });
+    subPanel.appendChild(clearRow);
+    if (!matches.length) {
+      var empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = 'No matching subdivision.';
+      subPanel.appendChild(empty);
+    }
+    matches.forEach(function (o) {
+      var row = document.createElement('div');
+      row.className = 'opt' + (subSelect.value === o.id ? ' is-selected' : '');
+      row.textContent = o.name;
+      row.addEventListener('click', function () { selectSubdivision(o.id, o.name); });
+      subPanel.appendChild(row);
+    });
+  }
+
+  function selectSubdivision(id, name) {
+    subSelect.value = id;
+    subSearch.value = name;
+    subdivisionFilterId = id || null;
+    subCombo.classList.remove('open');
+    updateLinesFilterLabel();
+    renderLinesPanel(linesSearch.value);
+  }
+
+  subSearch.addEventListener('focus', function () { subCombo.classList.add('open'); renderSubdivisionPanel(subSearch.value); });
+  subSearch.addEventListener('input', function () { subCombo.classList.add('open'); renderSubdivisionPanel(subSearch.value); });
+
+  // ---- Lines combo (multi-select) ----
+  function isSelected(lineId) {
+    for (var i = 0; i < linesSelect.options.length; i++) {
+      if (linesSelect.options[i].value === String(lineId)) return linesSelect.options[i].selected;
+    }
+    return false;
+  }
+
+  function setSelected(lineId, selected) {
+    for (var i = 0; i < linesSelect.options.length; i++) {
+      if (linesSelect.options[i].value === String(lineId)) { linesSelect.options[i].selected = selected; break; }
+    }
+  }
+
+  function selectedLines() {
+    return LINES.filter(function (l) { return isSelected(l.id); });
+  }
+
+  function renderChips() {
+    var sel = selectedLines();
+    linesChips.innerHTML = '';
+    sel.forEach(function (l) {
+      var chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.appendChild(document.createTextNode(l.name + ' '));
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = '×';
+      btn.addEventListener('click', function () { toggleLine(l.id); });
+      chip.appendChild(btn);
+      linesChips.appendChild(chip);
+    });
+    linesCount.textContent = sel.length;
+  }
+
+  function toggleLine(lineId) {
+    setSelected(lineId, !isSelected(lineId));
+    renderChips();
+    renderLinesPanel(linesSearch.value);
+  }
+
+  function updateLinesFilterLabel() {
+    if (subdivisionFilterId) {
+      var sub = subdivisionOptions.filter(function (o) { return o.id === subdivisionFilterId; })[0];
+      linesFilterLabel.textContent = sub ? sub.name : 'this subdivision';
+      linesShowAll.style.display = '';
+    } else {
+      linesFilterLabel.textContent = 'all subdivisions';
+      linesShowAll.style.display = 'none';
+    }
+  }
+
+  linesShowAll.addEventListener('click', function (e) {
+    e.preventDefault();
+    subdivisionFilterId = null;
+    updateLinesFilterLabel();
+    renderLinesPanel(linesSearch.value);
+  });
+
+  function renderLinesPanel(filterText) {
+    var q = (filterText || '').trim().toLowerCase();
+    var pool = subdivisionFilterId
+      ? LINES.filter(function (l) { return String(l.subdivision_id) === String(subdivisionFilterId); })
+      : LINES;
+    var matches = q ? pool.filter(function (l) { return l.name.toLowerCase().indexOf(q) !== -1; }) : pool;
+    linesPanel.innerHTML = '';
+    if (!matches.length) {
+      var empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = subdivisionFilterId ? 'No lines in this subdivision match.' : 'No lines match.';
+      linesPanel.appendChild(empty);
+      return;
+    }
+    matches.slice(0, 200).forEach(function (l) {
+      var row = document.createElement('div');
+      row.className = 'opt' + (isSelected(l.id) ? ' is-selected' : '');
+      var left = document.createElement('span');
+      left.textContent = (isSelected(l.id) ? '✓ ' : '') + l.name;
+      var right = document.createElement('span');
+      right.className = 'sub';
+      right.textContent = l.voltage || '';
+      row.appendChild(left);
+      row.appendChild(right);
+      row.addEventListener('click', function () { toggleLine(l.id); linesSearch.focus(); });
+      linesPanel.appendChild(row);
+    });
+    if (matches.length > 200) {
+      var more = document.createElement('div');
+      more.className = 'empty';
+      more.textContent = 'Showing first 200 of ' + matches.length + ' — keep typing to narrow.';
+      linesPanel.appendChild(more);
+    }
+  }
+
+  linesSearch.addEventListener('focus', function () { linesCombo.classList.add('open'); renderLinesPanel(linesSearch.value); });
+  linesSearch.addEventListener('input', function () { linesCombo.classList.add('open'); renderLinesPanel(linesSearch.value); });
+
+  renderChips();
+  updateLinesFilterLabel();
+})();
+</script>
+{% endblock %}

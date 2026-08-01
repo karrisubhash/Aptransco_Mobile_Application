@@ -1,0 +1,69 @@
+{% extends "line_inspection/base.html" %}
+{% block title %}Reports — APTRANSCO Line Inspection{% endblock %}
+
+{% block extra_head %}
+<style>
+  .level-switch { display: flex; gap: 6px; margin-bottom: 14px; }
+  .level-switch a { text-transform: capitalize; }
+  .bar { height: 8px; border-radius: 4px; background: var(--grid); overflow: hidden; min-width: 80px; }
+  .bar > span { display: block; height: 100%; background: var(--good); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .crit { color: var(--crit); font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Inspection Reports <span class="dim" style="font-size:13px;">{{ scope_label }}</span></h1>
+
+<div class="level-switch">
+  {% for lv in levels %}
+  <a class="btn {% if lv == level %}btn-primary{% endif %}" href="?level={{ lv }}">{{ lv }}</a>
+  {% endfor %}
+</div>
+
+<div class="panel">
+  <b>{{ totals.inspected }}</b> of <b>{{ totals.total }}</b> towers inspected
+  · <b>{{ totals.pending }}</b> pending
+  · <b>{{ totals.tickets_open }}</b> open tickets
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-transform:capitalize">{{ level }}</th>
+      <th class="num">Towers</th>
+      <th class="num">Inspected</th>
+      <th style="width:140px">Coverage</th>
+      <th class="num">Pending</th>
+      <th class="num">Minor</th>
+      <th class="num">Major</th>
+      <th class="num">Critical</th>
+      <th class="num">Open tickets</th>
+      <th class="num">Human / Drone</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.group }}</td>
+      <td class="num">{{ r.total }}</td>
+      <td class="num">{{ r.inspected }}</td>
+      <td>
+        <div class="bar" title="{% widthratio r.inspected r.total 100 %}%">
+          <span style="width: {% widthratio r.inspected r.total 100 %}%"></span>
+        </div>
+      </td>
+      <td class="num">{{ r.pending }}</td>
+      <td class="num">{{ r.minor }}</td>
+      <td class="num">{{ r.major }}</td>
+      <td class="num crit">{{ r.critical }}</td>
+      <td class="num">{{ r.tickets_open }}{% if r.tickets_critical_open %} <span class="crit">({{ r.tickets_critical_open }})</span>{% endif %}</td>
+      <td class="num">{{ r.tickets_human }} / {{ r.tickets_drone }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="10" class="dim">No towers in scope.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="dim" style="font-size:12px">Critical column and the parenthesised ticket number highlight critical-severity items. Human / Drone splits tickets by inspection source.</p>
+{% endblock %}

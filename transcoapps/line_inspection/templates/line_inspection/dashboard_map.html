@@ -1,0 +1,189 @@
+{% extends "line_inspection/base.html" %}
+{% block title %}Map — APTRANSCO Line Inspection{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<style>
+  #map { height: 72vh; min-height: 420px; border: 1px solid var(--grid); border-radius: 8px; }
+  .map-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .map-toolbar .stat { font-size: 13px; }
+  .map-toolbar .stat b { font-size: 15px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0 0; font-size: 12px; }
+  .legend .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+  .zoom-hint { font-size: 12px; color: var(--muted); }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Inspection Map <span class="dim" style="font-size:13px;">{{ cadre_label }}</span></h1>
+
+<div class="map-toolbar">
+  <span class="stat">Towers in scope: <b>{{ tower_total }}</b></span>
+  <span class="stat">Inspected: <b style="color:var(--good)">{{ inspected_total }}</b></span>
+  <span class="stat">Pending: <b>{{ pending_total }}</b></span>
+  <span class="stat">Lines: <b>{{ line_total }}</b></span>
+  <span class="hdr-spacer" style="flex:1"></span>
+  <label class="dim">Status
+    <select id="statusFilter">
+      <option value="">All</option>
+      {% for key, label in status_labels.items %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="dim">Cycle
+    <select id="typeFilter">
+      <option value="">Any</option>
+      <option value="ground_patrol">Ground Patrolling</option>
+      <option value="pmi">Pre-Monsoon (PMI)</option>
+    </select>
+  </label>
+</div>
+
+{% if tower_total == 0 %}
+<div class="panel">No towers are assigned within your jurisdiction yet. Ask your Admin to assign lines/subdivisions to you.</div>
+{% endif %}
+
+<div id="map"></div>
+<div class="legend">
+  {% for key, label in status_labels.items %}
+  <span><span class="dot" data-status="{{ key }}"></span>{{ label }}</span>
+  {% endfor %}
+  <span class="hdr-spacer" style="flex:1"></span>
+  <span class="zoom-hint" id="zoomHint">Zoom in to load individual towers.</span>
+</div>
+
+<script>
+(function () {
+  var STATUS_COLORS = {{ status_colors_json|safe }};
+  var BOUNDS = {{ bounds_json|safe }};
+  var AP_CENTER = {{ ap_center_json|safe }};
+  var AP_ZOOM = {{ ap_zoom }};
+  var TOWER_ZOOM_MIN = 12;
+  var LINES_URL = "{% url 'line_inspection:api-map-lines' %}";
+  var TOWERS_URL = "{% url 'line_inspection:api-map-towers' %}";
+  var TOWER_DETAIL_URL = "{% url 'line_inspection:api-tower-detail' 0 %}";
+  var INSPECTIONS_URL = "{% url 'line_inspection:dashboard-inspections' %}";
+  var VOLTAGE_COLORS = { '132kV': '#2a78d6', '220kV': '#7a3fb0', '400kV': '#c0392b' };
+
+  // colour the legend dots
+  document.querySelectorAll('.legend .dot').forEach(function (el) {
+    el.style.background = STATUS_COLORS[el.dataset.status] || '#999';
+  });
+
+  var map = L.map('map');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  if (BOUNDS) {
+    map.fitBounds([[BOUNDS.min_lat, BOUNDS.min_lng], [BOUNDS.max_lat, BOUNDS.max_lng]], { padding: [30, 30] });
+  } else {
+    map.setView(AP_CENTER, AP_ZOOM);
+  }
+
+  // Line overview layer (always loaded once)
+  fetch(LINES_URL, { credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (fc) {
+      L.geoJSON(fc, {
+        style: function (f) {
+          return { color: VOLTAGE_COLORS[f.properties.voltage] || '#555', weight: 2, opacity: 0.7 };
+        },
+        onEachFeature: function (f, layer) {
+          var p = f.properties;
+          layer.bindPopup('<b>' + (p.name || 'Line') + '</b><br>' + (p.voltage || '') +
+            '<br>Inspected ' + p.inspected_towers + ' / ' + p.total_towers + ' towers');
+          layer.on('click', function () { loadTowers(p.id); });
+        }
+      }).addTo(map);
+    })
+    .catch(function () {});
+
+  var towerLayer = L.markerClusterGroup({ disableClusteringAtZoom: 16, chunkedLoading: true });
+  map.addLayer(towerLayer);
+  var zoomHint = document.getElementById('zoomHint');
+
+  function currentFilters() {
+    var s = document.getElementById('statusFilter').value;
+    var t = document.getElementById('typeFilter').value;
+    var qs = [];
+    if (s) qs.push('status=' + encodeURIComponent(s));
+    if (t) qs.push('inspection_type=' + encodeURIComponent(t));
+    return qs;
+  }
+
+  function renderFeatures(fc) {
+    towerLayer.clearLayers();
+    var markers = [];
+    (fc.features || []).forEach(function (f) {
+      var c = f.geometry.coordinates;          // [lng, lat]
+      var p = f.properties;
+      var m = L.circleMarker([c[1], c[0]], {
+        radius: 6, weight: 1, color: '#333', fillColor: STATUS_COLORS[p.status] || STATUS_COLORS.none, fillOpacity: 0.9
+      });
+      var base = '<b>Tower ' + (p.tower_number || p.id) + '</b><br>' + (p.tower_type || '') +
+        ' · ' + (p.voltage || '') + '<br>Status: ' + p.status +
+        '<br><a href="' + INSPECTIONS_URL + '?tower=' + p.id + '">View history</a>';
+      m.bindPopup(base + '<br><span class="dim">loading circuits…</span>');
+      m.on('popupopen', function () {
+        fetch(TOWER_DETAIL_URL.replace('/0/', '/' + p.id + '/'), { credentials: 'same-origin' })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            var circs = (d.circuits || []).map(function (c2) {
+              return c2.name + ' <span class="dim">(' + c2.voltage + (c2.circuit_type ? ', ' + c2.circuit_type : '') + ')</span>';
+            }).join('<br>');
+            m.setPopupContent(base +
+              '<hr style="margin:6px 0"><b>Circuits on this structure:</b><br>' + (circs || '—') +
+              (d.tower_ckts_conductor ? '<br><span class="dim">' + d.tower_ckts_conductor + '</span>' : ''));
+          })
+          .catch(function () { m.setPopupContent(base); });
+      });
+      markers.push(m);
+    });
+    towerLayer.addLayers(markers);
+    zoomHint.textContent = fc.truncated
+      ? 'Showing first ' + markers.length + ' towers — zoom in to see the rest.'
+      : markers.length + ' towers shown.';
+  }
+
+  function loadTowersByBbox() {
+    if (map.getZoom() < TOWER_ZOOM_MIN) {
+      towerLayer.clearLayers();
+      zoomHint.textContent = 'Zoom in to load individual towers.';
+      return;
+    }
+    var b = map.getBounds();
+    var bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(',');
+    var qs = currentFilters();
+    qs.push('bbox=' + bbox);
+    fetch(TOWERS_URL + '?' + qs.join('&'), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(renderFeatures)
+      .catch(function () {});
+  }
+
+  function loadTowers(lineId) {
+    var qs = currentFilters();
+    qs.push('line=' + encodeURIComponent(lineId));
+    fetch(TOWERS_URL + '?' + qs.join('&'), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (fc) {
+        renderFeatures(fc);
+        if (fc.features && fc.features.length) {
+          var pts = fc.features.map(function (f) { return [f.geometry.coordinates[1], f.geometry.coordinates[0]]; });
+          map.fitBounds(pts, { padding: [40, 40], maxZoom: 15 });
+        }
+      })
+      .catch(function () {});
+  }
+
+  map.on('moveend', loadTowersByBbox);
+  document.getElementById('statusFilter').addEventListener('change', loadTowersByBbox);
+  document.getElementById('typeFilter').addEventListener('change', loadTowersByBbox);
+  loadTowersByBbox();
+})();
+</script>
+{% endblock %}

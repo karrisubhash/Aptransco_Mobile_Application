@@ -1,0 +1,13 @@
+{% extends "line_inspection/base.html" %}
+{% block title %}{{ title }} — Line Inspection{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<div class="panel">
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button class="btn btn-primary" type="submit">Save</button>
+  <a class="btn" href="{% url 'line_inspection:checklist-editor' %}">Cancel</a>
+</form>
+</div>
+{% endblock %}
