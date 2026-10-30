@@ -124,9 +124,6 @@ python manage.py test line_inspection           # 60 backend tests
 cd Aptransco_TIS-main/drone_inspection_app && flutter test   # ~180 Flutter tests
 ```
 
-## Screenshots
-
-<!-- TODO(Subhash): add phone screenshots with dummy data only (login, map, inspection form, sync bar) -->
 
 ## Future improvements
 
